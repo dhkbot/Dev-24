@@ -7,10 +7,10 @@ import string
 import json
 
 # Insert your Telegram bot token here
-bot = telebot.TeleBot('7329977373:AAHsIUXc9Wb4hgdm0lGqDr2ntOjeHIks23s')
+bot = telebot.TeleBot('6606080506:AAH9AXgoT3hFf1Rbx39nDoZClIg4vV-e0uw')
 
 # Admin user IDs
-admin_id = {"6529567486"}
+admin_id = {"881808734"}
 
 # File to store allowed user IDs and expiration dates
 USER_FILE = "users.json"
@@ -22,7 +22,7 @@ LOG_FILE = "log.txt"
 KEY_FILE = "keys.json"
 
 # Cooldown time for users
-COOLDOWN_TIME = 240  # 5minutes
+COOLDOWN_TIME = 240  # 4 minutes
 
 # Dictionary to store the last time each user ran the /bgmi command
 bgmi_cooldown = {}
@@ -51,10 +51,7 @@ def save_keys(keys):
 
 def log_command(user_id, target, port, time):
     user_info = bot.get_chat(user_id)
-    if user_info.username:
-        username = "@" + user_info.username
-    else:
-        username = f"UserID: {user_id}"
+    username = user_info.username if user_info.username else f"UserID: {user_id}"
 
     with open(LOG_FILE, "a") as file:  # Open in "append" mode
         file.write(f"Username: {username}\nTarget: {target}\nPort: {port}\nTime: {time}\n\n")
@@ -83,31 +80,37 @@ def record_command_logs(user_id, command, target=None, port=None, time=None):
     with open(LOG_FILE, "a") as file:
         file.write(log_entry + "\n")
 
-def generate_key(length=16):
+def generate_key(length=6):
     characters = string.ascii_letters + string.digits
     return ''.join(random.choice(characters) for _ in range(length))
 
-def add_days_to_current_date(days):
-    return (datetime.datetime.now() + datetime.timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+def add_time_to_current_date(hours=0, days=0):
+    return (datetime.datetime.now() + datetime.timedelta(hours=hours, days=days)).strftime('%Y-%m-%d %H:%M:%S')
 
 @bot.message_handler(commands=['generatekey'])
 def generate_key_command(message):
     user_id = str(message.chat.id)
     if user_id in admin_id:
         command = message.text.split()
-        if len(command) == 2:
+        if len(command) == 3:
             try:
-                days = int(command[1])
+                time_amount = int(command[1])
+                time_unit = command[2].lower()
+                if time_unit == 'hours':
+                    expiration_date = add_time_to_current_date(hours=time_amount)
+                elif time_unit == 'days':
+                    expiration_date = add_time_to_current_date(days=time_amount)
+                else:
+                    raise ValueError("Invalid time unit")
                 key = generate_key()
-                expiration_date = add_days_to_current_date(days)
                 keys = read_keys()
                 keys[key] = expiration_date
                 save_keys(keys)
                 response = f"Key generated: {key}\nExpires on: {expiration_date}"
             except ValueError:
-                response = "Please specify a valid number of days."
+                response = "Please specify a valid number and unit of time (hours/days)."
         else:
-            response = "Usage: /generatekey <days>"
+            response = "Usage: /generatekey <amount> <hours/days>"
     else:
         response = "🫅ONLY OWNER CAN USE🫅"
 
@@ -123,11 +126,16 @@ def redeem_key_command(message):
         if key in keys:
             expiration_date = keys[key]
             users = read_users()
-            users[user_id] = expiration_date
+            if user_id in users:
+                user_expiration = datetime.datetime.strptime(users[user_id], '%Y-%m-%d %H:%M:%S')
+                new_expiration_date = max(user_expiration, datetime.datetime.now()) + datetime.timedelta(hours=1)
+                users[user_id] = new_expiration_date.strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                users[user_id] = expiration_date
             save_users(users)
             del keys[key]
             save_keys(keys)
-            response = f"✅Key redeemed successfully! Access granted until: {expiration_date}"
+            response = f"✅Key redeemed successfully! Access granted until: {users[user_id]}"
         else:
             response = "Invalid or expired key."
     else:
@@ -144,7 +152,7 @@ def handle_bgmi(message):
         if datetime.datetime.now() <= expiration_date:
             if user_id not in admin_id:
                 if user_id in bgmi_cooldown and (datetime.datetime.now() - bgmi_cooldown[user_id]).seconds < COOLDOWN_TIME:
-                    response = f"You are on cooldown. Please wait {COOLDOWN_TIME // 240}4minutes before running the /bgmi command again."
+                    response = f"You are on cooldown. Please wait {COOLDOWN_TIME // 240} 4minutes before running the /bgmi command again."
                     bot.reply_to(message, response)
                     return
                 bgmi_cooldown[user_id] = datetime.datetime.now()
@@ -178,7 +186,7 @@ def handle_bgmi(message):
 def start_attack_reply(message, target, port, time):
     user_info = message.from_user
     username = user_info.username if user_info.username else user_info.first_name
-    response = f"{username}, 🔥🔥ATTACK STARTED.🔥🔥\n\n🎯Target: {target}\n🚪Port: {port}\n⏳Time: {time} Seconds\nMethod: BGMI-VIP"
+    response = f"{username}, 🔥🔥ATTACK STARTED.🔥🔥\n\n🎯Target: {target}\n🚪Port: {port}\n⏳Time: {time} Seconds\nMethod: BGMI-FREE\n By ZAHER"
     bot.reply_to(message, response)
 
 @bot.message_handler(commands=['clearlogs'])
@@ -231,8 +239,8 @@ def show_recent_logs(message):
 @bot.message_handler(commands=['id'])
 def show_user_id(message):
     user_id = str(message.chat.id)
-    response = f"🤖Your ID: {user_id}"
-    bot.reply_to(message,    response)
+    response= f"🤖Your ID: {user_id}"
+    bot.reply_to(message, response)
 
 @bot.message_handler(commands=['mylogs'])
 def show_command_logs(message):
@@ -263,7 +271,7 @@ def show_help(message):
 💥 /redeemkey <key>: Redeem a key for access.
 
 🤖 Admin commands:
-💥 /generatekey <days>: Generate a new key.
+💥 /generatekey <amount> <hours/days>: Generate a new key.
 💥 /allusers: List authorized users.
 💥 /logs: Show all users' logs.
 💥 /clearlogs: Clear the logs file.
@@ -313,7 +321,7 @@ def admin_commands(message):
     user_name = message.from_user.first_name
     response = f'''{user_name}, here are the admin commands:
 
-💥 /generatekey <days>: Generate a new key.
+💥 /generatekey <amount> <hours/days>: Generate a new key.
 💥 /allusers: List authorized users.
 💥 /logs: Show all users' logs.
 💥 /clearlogs: Clear the logs file.
