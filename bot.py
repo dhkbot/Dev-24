@@ -4,17 +4,18 @@ import logging
 from aiogram import Bot
 import asyncio
 
-API_TOKEN = '7329977373:AAHsIUXc9Wb4hgdm0lGqDr2ntOjeHIks23s'
-ADMIN_ID = '6529567486'
+API_TOKEN = '6606080506:AAH9AXgoT3hFf1Rbx39nDoZClIg4vV-e0uw'
+ADMIN_ID = '881808734'
 MAX_RESTARTS = 5
 RESTART_PERIOD = 60  # Seconds
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 bot = Bot(API_TOKEN)
 
-def start_bot():
+async def start_bot():
     """Start the bot script as a subprocess."""
-    return subprocess.Popen(['python3', 'm.py'])
+    process = await asyncio.create_subprocess_exec('python3', 'm.py')
+    return process
 
 async def notify_admin(message):
     """Send a notification message to the admin via Telegram."""
@@ -28,7 +29,7 @@ async def main():
     """Main function to manage bot process lifecycle."""
     restart_count = 0
     last_restart_time = time.time()
-    
+
     while True:
         if restart_count >= MAX_RESTARTS:
             current_time = time.time()
@@ -41,20 +42,23 @@ async def main():
             last_restart_time = time.time()
 
         logging.info("Starting the bot...")
-        process = start_bot()
+        process = await start_bot()
         await notify_admin("🚀 Bot is starting...")
 
-        while process.poll() is None:
-            await asyncio.sleep(5)
-        
+        while True:
+            return_code = await process.wait()
+            if return_code is None:
+                await asyncio.sleep(5)
+            else:
+                break
+
         logging.warning("Bot process terminated. Restarting in 10 seconds...")
         await notify_admin("⚠️ The bot has crashed and will be restarted in 10 seconds.")
         restart_count += 1
         await asyncio.sleep(10)
-        
 
 if __name__ == '__main__':
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logging.info("Venom script terminated by user.")
+        logging.info("Zaher script terminated by user.")
