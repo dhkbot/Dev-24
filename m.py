@@ -7,6 +7,9 @@ import string
 import json
 import time
 
+from keep_alive import keep_alive
+keep_alive()
+
 # Insert your Telegram bot token here
 bot = telebot.TeleBot('6606080506:AAH9AXgoT3hFf1Rbx39nDoZClIg4vV-e0uw')
 
